@@ -29,4 +29,3 @@ void lvgl_tick_timer_init(uint32_t ms);
 void lvgl_unlock(void);
 bool lvgl_lock(int timeout_ms);
 void task(void *param);
-void btn_event_cb(lv_event_t *e);
