@@ -21,8 +21,8 @@ static size_t json_rx_index = 0;
 // CDC instance numbers
 // CDC0 will be used by system console (automatic when
 // CONFIG_ESP_CONSOLE_USB_CDC=y) CDC1 will be for JSON data
-#define CDC_ITF_DATA 1 // For JSON data communication
-#define CDC_ITF_LOGS 0 // For ESP logs (system console)
+#define CDC_ITF_DATA TINYUSB_CDC_ACM_1 // For JSON data communication
+#define CDC_ITF_LOGS TINYUSB_CDC_ACM_0 // For ESP logs (system console)
 
 // Callback for CDC data received on the DATA interface
 void tusb_cdc_rx_callback(int itf, cdcacm_event_t *event) {
@@ -93,6 +93,7 @@ void tiny_usb_init(void) {
 
   tinyusb_config_t tusb_cfg = TINYUSB_DEFAULT_CONFIG();
   tusb_cfg.port = TINYUSB_PORT_FULL_SPEED_0;
+  tusb_cfg.phy.skip_setup = true;
 
   ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
   ESP_LOGI(TAG, "TinyUSB driver installed");
