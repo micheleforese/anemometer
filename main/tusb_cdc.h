@@ -10,9 +10,8 @@
 #include <stdio.h>
 #include <string.h>
 
-// CDC instance numbers
-#define CDC_ITF_LOGS 0 // For ESP logs
-#define CDC_ITF_DATA 1 // For JSON data communication
+#define CDC_ITF_LOGS TINYUSB_CDC_ACM_0 // For ESP logs (system console)
+#define CDC_ITF_DATA TINYUSB_CDC_ACM_1 // For JSON data communication
 
 void tusb_cdc_rx_callback(int itf, cdcacm_event_t *event);
 void tusb_cdc_line_state_changed_callback(int itf, cdcacm_event_t *event);

@@ -18,12 +18,6 @@ static const char *TAG = "DUAL_CDC";
 static char json_rx_buffer[JSON_BUFFER_SIZE];
 static size_t json_rx_index = 0;
 
-// CDC instance numbers
-// CDC0 will be used by system console (automatic when
-// CONFIG_ESP_CONSOLE_USB_CDC=y) CDC1 will be for JSON data
-#define CDC_ITF_DATA TINYUSB_CDC_ACM_1 // For JSON data communication
-#define CDC_ITF_LOGS TINYUSB_CDC_ACM_0 // For ESP logs (system console)
-
 // Callback for CDC data received on the DATA interface
 void tusb_cdc_rx_callback(int itf, cdcacm_event_t *event) {
   if (itf != CDC_ITF_DATA) {
@@ -104,21 +98,6 @@ void tiny_usb_init(void) {
   }
   ESP_LOGI(TAG, "TinyUSB driver installed");
 
-  // Give USB time to enumerate
-  vTaskDelay(pdMS_TO_TICKS(1000));
-
-  // Configure CDC ACM for DATA interface (ITF 1)
-  tinyusb_config_cdcacm_t acm_cfg_data = {
-      .cdc_port = CDC_ITF_DATA,
-      .callback_rx = &tusb_cdc_rx_callback,
-      .callback_rx_wanted_char = NULL,
-      .callback_line_state_changed = &tusb_cdc_line_state_changed_callback,
-      .callback_line_coding_changed = NULL};
-
-  ESP_ERROR_CHECK(tinyusb_cdcacm_init(&acm_cfg_data));
-  ESP_LOGI(TAG, "CDC ACM interface %d initialized", CDC_ITF_DATA);
-
-  // Give more time for USB enumeration
   vTaskDelay(pdMS_TO_TICKS(100));
 
   // Configure CDC ACM for LOGS interface (ITF 0)
@@ -130,10 +109,30 @@ void tiny_usb_init(void) {
       .callback_line_state_changed = &tusb_cdc_line_state_changed_callback,
       .callback_line_coding_changed = NULL};
 
-  ESP_ERROR_CHECK(tinyusb_cdcacm_init(&acm_cfg_logs));
-  ESP_LOGI(TAG, "CDC ACM interface %d initialized", CDC_ITF_LOGS);
+  ret = tinyusb_cdcacm_init(&acm_cfg_logs);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "CDC0 init failed: %s", esp_err_to_name(ret));
+    return;
+  }
+  ESP_LOGI(TAG, "CDC0 (Data) initialized");
 
-  // Give more time for USB enumeration
+  vTaskDelay(pdMS_TO_TICKS(100));
+
+  // Configure CDC ACM for DATA interface (ITF 1)
+  tinyusb_config_cdcacm_t acm_cfg_data = {
+      .cdc_port = CDC_ITF_DATA,
+      .callback_rx = &tusb_cdc_rx_callback,
+      .callback_rx_wanted_char = NULL,
+      .callback_line_state_changed = &tusb_cdc_line_state_changed_callback,
+      .callback_line_coding_changed = NULL};
+
+  ret = tinyusb_cdcacm_init(&acm_cfg_data);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "CDC1 init failed: %s", esp_err_to_name(ret));
+    return;
+  }
+  ESP_LOGI(TAG, "CDC1 (Data) initialized");
+
   vTaskDelay(pdMS_TO_TICKS(100));
 
   ESP_LOGI(TAG, "USB Dual CDC initialized");
