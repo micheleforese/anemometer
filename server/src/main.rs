@@ -220,19 +220,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     client
         .subscribe_many([
             SubscribeFilter {
-                path: "/anemometer".to_string(),
+                path: "anemometer".to_string(),
                 qos: QoS::AtLeastOnce,
             },
             SubscribeFilter {
-                path: "/sps30".to_string(),
+                path: "sps30".to_string(),
                 qos: QoS::AtLeastOnce,
             },
             SubscribeFilter {
-                path: "/imu".to_string(),
+                path: "imu".to_string(),
                 qos: QoS::AtLeastOnce,
             },
             SubscribeFilter {
-                path: "/status".to_string(),
+                path: "status".to_string(),
                 qos: QoS::AtLeastOnce,
             },
         ])
