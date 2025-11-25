@@ -1,7 +1,6 @@
 use clap::Parser;
 use rumqttc::{AsyncClient, Event, Incoming, LastWill, MqttOptions, QoS, SubscribeFilter};
 use serde_json::json;
-use serialport::SerialPort;
 use std::error::Error;
 use std::io::Write;
 use std::sync::Arc;
@@ -9,6 +8,7 @@ use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{self, Sender};
 use tokio::{task, time};
+use tokio_serial::SerialPort;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -186,7 +186,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (tx, rx) = mpsc::channel::<String>(100);
     let (tx_serial_to_mqtt, rx_serial_to_mqtt) = mpsc::channel::<String>(100);
 
-    let port: Box<dyn SerialPort> = serialport::new(&args.port, args.baud)
+    let port: Box<dyn SerialPort> = tokio_serial::new(&args.port, args.baud)
         .timeout(Duration::from_millis(100))
         .open()
         .expect("Failed to open serial port");
