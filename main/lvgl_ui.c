@@ -122,7 +122,7 @@ static void btn_power_off_handler(lv_event_t *e) {
   if (code == LV_EVENT_CLICKED) {
     cJSON *json = cJSON_CreateObject();
     cJSON_AddStringToObject(json, "type", "command");
-    cJSON_AddStringToObject(json, "command", "POWER OFF");
+    cJSON_AddStringToObject(json, "command", "poweroff");
     tusb_json_write(json);
     cJSON_Delete(json);
   }
@@ -135,7 +135,7 @@ static void btn_measure_start_handler(lv_event_t *e) {
   if (code == LV_EVENT_CLICKED) {
     cJSON *json = cJSON_CreateObject();
     cJSON_AddStringToObject(json, "type", "command");
-    cJSON_AddStringToObject(json, "command", "MEASURE START");
+    cJSON_AddStringToObject(json, "command", "start");
     tusb_json_write(json);
     cJSON_Delete(json);
   }
@@ -148,7 +148,7 @@ static void btn_measure_stop_handler(lv_event_t *e) {
   if (code == LV_EVENT_CLICKED) {
     cJSON *json = cJSON_CreateObject();
     cJSON_AddStringToObject(json, "type", "command");
-    cJSON_AddStringToObject(json, "command", "MEASURE STOP");
+    cJSON_AddStringToObject(json, "command", "stop");
     tusb_json_write(json);
     cJSON_Delete(json);
   }
@@ -218,10 +218,16 @@ void lvgl_anemometer_ui_init(lv_obj_t *parent) {
   // TAB 3
   // -------------------------------
 
-  lv_obj_set_flex_flow(tab3, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_style_pad_row(tab2, 20, 0);
+  lv_obj_t *btn_container = lv_obj_create(tab3);
+  lv_obj_set_size(btn_container, lv_pct(100), lv_pct(100));
+  lv_obj_set_flex_flow(btn_container, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_align(btn_container, LV_ALIGN_CENTER, 0);
+  lv_obj_set_style_pad_top(btn_container, 10, 0);    // padding from top
+  lv_obj_set_style_pad_bottom(btn_container, 10, 0); // padding from bottom
+  lv_obj_set_flex_align(btn_container, LV_FLEX_FLOW_COLUMN,
+                        LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-  lv_obj_t *power_off_btn = lv_btn_create(tab3);
+  lv_obj_t *power_off_btn = lv_btn_create(btn_container);
   lv_obj_add_event_cb(power_off_btn, btn_power_off_handler, LV_EVENT_ALL, NULL);
 
   lv_tabview_set_act(tabview, 0, LV_ANIM_ON);
@@ -230,7 +236,11 @@ void lvgl_anemometer_ui_init(lv_obj_t *parent) {
   lv_label_set_text(power_off_label, "Power OFF");
   lv_obj_center(power_off_label);
 
-  lv_obj_t *measure_start_btn = lv_btn_create(tab3);
+  lv_obj_t *spacer1 = lv_obj_create(btn_container);
+  lv_obj_set_size(spacer1, 0, 60);                   // width=1, height=custom
+  lv_obj_clear_flag(spacer1, LV_OBJ_FLAG_CLICKABLE); // non-interactive
+
+  lv_obj_t *measure_start_btn = lv_btn_create(btn_container);
   lv_obj_add_event_cb(measure_start_btn, btn_measure_start_handler,
                       LV_EVENT_ALL, NULL);
 
@@ -240,7 +250,12 @@ void lvgl_anemometer_ui_init(lv_obj_t *parent) {
   lv_label_set_text(measure_start_label, "Measure START");
   lv_obj_center(measure_start_label);
 
-  lv_obj_t *measure_stop_btn = lv_btn_create(tab3);
+  // --- Spacer between Measure buttons (e.g., 20 px) ---
+  lv_obj_t *spacer2 = lv_obj_create(btn_container);
+  lv_obj_set_size(spacer2, 0, 10);
+  lv_obj_clear_flag(spacer2, LV_OBJ_FLAG_CLICKABLE);
+
+  lv_obj_t *measure_stop_btn = lv_btn_create(btn_container);
   lv_obj_add_event_cb(measure_stop_btn, btn_measure_stop_handler, LV_EVENT_ALL,
                       NULL);
 
