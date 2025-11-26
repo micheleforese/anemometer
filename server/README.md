@@ -1,7 +1,7 @@
 # Server Instructions
 
 ```shell
-server --port /dev/ttyACM1 --mqtt-id "test" --mqtt-host localhost --mqtt-port 1883
+server --port /dev/ttyACM1 --mqtt-id "test" --mqtt-host localhost --mqtt-port 1883 --seconds 2
 ```
 
 ## Cross Compiling

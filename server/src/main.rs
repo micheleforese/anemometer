@@ -1,13 +1,12 @@
+use std::time::{Duration, Instant};
 use clap::Parser;
 use rumqttc::{AsyncClient, Event, Incoming, LastWill, MqttOptions, QoS, SubscribeFilter};
 use serde_json::json;
 use std::error::Error;
 use std::io::Write;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{self, Sender};
-use tokio::{task, time};
 use tokio_serial::SerialPort;
 
 #[derive(Parser, Debug)]
@@ -34,8 +33,8 @@ struct Args {
     #[arg(long)]
     mqtt_port: u16,
 
-    #[arg(long)]
-    n: u16,
+    #[arg(short, long)]
+    seconds: u64,
 }
 
 fn match_topic(topic: &str) -> TopicType {
@@ -193,6 +192,11 @@ async fn serial_to_mqtt_channel_task(
     }
 }
 
+fn has_elapsed_between(old_timestamp: Instant, current_timestamp: Instant, seconds: u64) -> bool {
+    let elapsed = current_timestamp.duration_since(old_timestamp);
+    elapsed >= Duration::from_secs(seconds)
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
@@ -203,7 +207,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("MQTT id: {}", args.mqtt_id);
     println!("MQTT Host: {}", args.mqtt_host);
     println!("MQTT Port: {}", args.mqtt_port);
-    println!("N: {}", args.n);
+    println!("Filter Seconds: {}", args.seconds);
 
     let (tx, rx) = mpsc::channel::<String>(100);
     let (tx_serial_to_mqtt, rx_serial_to_mqtt) = mpsc::channel::<String>(100);
@@ -225,19 +229,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .subscribe_many([
             SubscribeFilter {
                 path: "anemometer".to_string(),
-                qos: QoS::AtLeastOnce,
+                qos: QoS::AtMostOnce,
             },
             SubscribeFilter {
                 path: "sps30".to_string(),
-                qos: QoS::AtLeastOnce,
+                qos: QoS::AtMostOnce,
             },
             SubscribeFilter {
                 path: "imu".to_string(),
-                qos: QoS::AtLeastOnce,
+                qos: QoS::AtMostOnce,
             },
             SubscribeFilter {
                 path: "status".to_string(),
-                qos: QoS::AtLeastOnce,
+                qos: QoS::AtMostOnce,
             },
         ])
         .await
@@ -267,7 +271,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mqtt_sender_task(rx_serial_to_mqtt, client_clone).await;
     });
 
-    let mut counter = 0;
+    let mut last_msg_anm_timestamp:Instant = Instant::now();
 
     loop {
         let event = eventloop.poll().await;
@@ -285,17 +289,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             continue;
                         }
 
+                        if topic_type == TopicType::Anemometer{
+                            let current_time =Instant::now();
+                            if !has_elapsed_between(last_msg_anm_timestamp, current_time, args.seconds){
+                                continue;
+                            }
+
+                            last_msg_anm_timestamp = current_time;
+                        }
+
                         // Convert payload to string (if UTF-8)
                         if let Ok(text) = std::str::from_utf8(&payload) {
                             println!("📩 Message received:");
                             println!("   Topic: {topic}");
                             println!("   Payload: {text}");
 
-                            counter += 1;
-                            if counter != args.n {
-                                continue;
-                            }
-                            counter = 0;
 
                             match serde_json::from_str::<serde_json::Value>(text) {
                                 Ok(json_val) => {
