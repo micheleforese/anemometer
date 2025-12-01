@@ -77,24 +77,18 @@ async fn main() {
     println!("MQTT Port: {}", args.mqtt_port);
     println!("Filter Seconds: {}", args.filter_seconds);
 
+    let (mqtt_watch_channel_tx, mqtt_watch_channel_rx) = watch::channel(false);
+    let (serial_watch_channel_tx, serial_watch_channel_rx) = watch::channel(false);
+    let (mqtt_serial_queue_tx, mqtt_serial_queue_rx) = mpsc::channel::<String>(100);
+    let (serial_mqtt_queue_tx, serial_mqtt_queue_rx) = mpsc::channel::<String>(100);
+
     let mut mqttoptions = MqttOptions::new(args.mqtt_id, args.mqtt_host, args.mqtt_port);
     mqttoptions.set_keep_alive(Duration::from_secs(30));
-
-    let (mqtt_watch_channel_tx, mqtt_watch_channel_rx) = watch::channel(false);
-    let (mqtt_queue_to_mqtt_server_tx, mqtt_queue_to_mqtt_server_rx) = mpsc::channel::<String>(10);
-    let (mqtt_queue_to_serial_queue_tx, mqtt_queue_to_serial_queue_rx) =
-        mpsc::channel::<String>(10);
-
     let (client, eventloop) = AsyncClient::new(mqttoptions.clone(), 10);
 
     let mqtt_client = Arc::new(Mutex::new(client));
     let mqtt_eventloop = Arc::new(Mutex::new(eventloop));
 
-    let (serial_watch_channel_tx, serial_watch_channel_rx) = watch::channel(false);
-    let (serial_queue_to_serial_port_tx, serial_queue_to_serial_port_rx) =
-        mpsc::channel::<String>(100);
-    let (serial_port_to_serial_queue_tx, serial_port_to_serial_queue_rx) =
-        mpsc::channel::<String>(100);
     let serial_port = Arc::new(Mutex::new(None::<Box<dyn SerialPort>>));
 
     // MQTT -> SERIAL
@@ -114,14 +108,14 @@ async fn main() {
         .await;
     });
 
-    // MQTT Server -> MQTT Queue
+    // MQTT Server -> MQTT-SERIAL Queue
     let mqtt_eventloop_clone = mqtt_eventloop.clone();
     let mqtt_watch_channel_tx_clone = mqtt_watch_channel_tx.clone();
     let mqtt_watch_channel_rx_clone = mqtt_watch_channel_rx.clone();
     let mqtt_listener = tokio::spawn(async move {
-        mqtt_server_to_mqtt_queue_task(
+        mqtt_listener_task(
             mqtt_eventloop_clone,
-            &mqtt_queue_to_mqtt_server_tx,
+            &mqtt_serial_queue_tx,
             mqtt_watch_channel_tx_clone,
             mqtt_watch_channel_rx_clone,
             Duration::from_secs(args.filter_seconds),
@@ -129,24 +123,13 @@ async fn main() {
         .await;
     });
 
-    // MQTT Queue -> Serial Queue
-    let mqtt_watch_channel_rx_clone = mqtt_watch_channel_rx.clone();
-    let mqtt_to_seial = tokio::spawn(async move {
-        mqtt_queue_to_serial_queue_task(
-            mqtt_queue_to_serial_queue_rx,
-            mqtt_queue_to_serial_queue_tx,
-            mqtt_watch_channel_rx_clone,
-        )
-        .await;
-    });
-
-    // Serial Queue -> Serial port
+    // MQTT-SERIAL Queue -> SERIAL port
     let serial_port_clone: Arc<Mutex<Option<Box<dyn SerialPort>>>> = serial_port.clone();
     let serial_watch_channel_tx_clone = serial_watch_channel_tx.clone();
     let serial_watch_channel_rx_clone = serial_watch_channel_rx.clone();
-    tokio::spawn(async move {
-        serial_queue_to_serial_port_task(
-            serial_queue_to_serial_port_rx,
+    let serial_writer = tokio::spawn(async move {
+        serial_writer_task(
+            mqtt_serial_queue_rx,
             serial_port_clone,
             serial_watch_channel_tx_clone,
             serial_watch_channel_rx_clone,
@@ -155,7 +138,7 @@ async fn main() {
     });
 
     // SERIAL -> MQTT
-    // Serial Reconnection
+    // SERIAL Reconnection
     let serial_port_clone = serial_port.clone();
     let serial_watch_channel_tx_clone = serial_watch_channel_tx.clone();
     let serial_watch_channel_rx_clone = serial_watch_channel_rx.clone();
@@ -171,27 +154,27 @@ async fn main() {
         .await;
     });
 
-    // Serial Port -> Serial Queue
+    // SERIAL Port -> SERIAL-MQTT Queue
     let serial_port_clone: Arc<Mutex<Option<Box<dyn SerialPort>>>> = serial_port.clone();
-    let serial_port_to_serial_queue_tx_clone = serial_port_to_serial_queue_tx.clone();
     let mqtt_watch_channel_tx_clone = mqtt_watch_channel_tx.clone();
     let mqtt_watch_channel_rx_clone = mqtt_watch_channel_rx.clone();
     let serial_listener = tokio::spawn(async move {
-        serial_port_to_serial_queue_task(
+        serial_listener_task(
             serial_port_clone,
-            serial_port_to_serial_queue_tx_clone,
+            serial_mqtt_queue_tx,
             mqtt_watch_channel_tx_clone,
             mqtt_watch_channel_rx_clone,
         )
         .await;
     });
 
+    // SERIAL Port -> SERIAL Queue
     let mqtt_client_clone = mqtt_client.clone();
     let mqtt_watch_channel_tx_clone = mqtt_watch_channel_tx.clone();
     let mqtt_watch_channel_rx_clone = mqtt_watch_channel_rx.clone();
-    let mqtt_sender = tokio::spawn(async move {
-        mqtt_queue_to_mqtt_server_task(
-            mqtt_queue_to_mqtt_server_rx,
+    let mqtt_writer = tokio::spawn(async move {
+        mqtt_writer_task(
+            serial_mqtt_queue_rx,
             mqtt_client_clone,
             mqtt_watch_channel_tx_clone,
             mqtt_watch_channel_rx_clone,
@@ -201,12 +184,12 @@ async fn main() {
 
     // Wait for all tasks
     let _ = tokio::join!(
-        serial_reconnect,
-        serial_listener,
         mqtt_reconnect,
         mqtt_listener,
-        mqtt_to_seial,
-        mqtt_sender,
+        serial_writer,
+        serial_reconnect,
+        serial_listener,
+        mqtt_writer,
     );
 }
 
@@ -254,15 +237,16 @@ async fn mqtt_status_topic_callback(json: &serde_json::Value, tx: &Sender<String
     }
 }
 
-async fn serial_queue_to_serial_port_task(
+async fn serial_writer_task(
     mut serial_queue_rx: mpsc::Receiver<String>,
     port: Arc<Mutex<Option<Box<dyn SerialPort>>>>,
     serial_flag_tx: watch::Sender<bool>,
     serial_flag_rx: watch::Receiver<bool>,
 ) {
-    println!("[TASK] SERIAL queue -> SERIAL port: START");
+    println!("[TASK] SERIAL writer: START");
+
     while let Some(message) = serial_queue_rx.recv().await {
-        println!("[TASK] SERIAL queue -> SERIAL port: Recived message '{message}'");
+        println!("Writer sending: {}", &message);
 
         loop {
             while !*serial_flag_rx.borrow() {
@@ -290,40 +274,14 @@ async fn serial_queue_to_serial_port_task(
     }
 }
 
-async fn mqtt_queue_to_serial_queue_task(
-    mut mqtt_queue_rx: mpsc::Receiver<String>,
-    serial_queue_tx: mpsc::Sender<String>,
-    serial_flag_rx: watch::Receiver<bool>,
-) {
-    println!("[TASK] MQTT queue -> SERIAL queue: START");
-
-    // Consumer loop: wait for messages from any worker
-    while let Some(message) = mqtt_queue_rx.recv().await {
-        println!("Writer sending: {}", &message);
-
-        loop {
-            while !*serial_flag_rx.borrow() {
-                sleep(Duration::from_millis(100)).await;
-            }
-
-            match serial_queue_tx.send(message.clone()).await {
-                Ok(_) => {
-                    println!("[TASK] MQTT queue -> SERIAL queue: Message Sent.")
-                }
-                Err(_) => {
-                    println!("[TASK] MQTT queue -> SERIAL queue: ERROR Sending Message.")
-                }
-            }
-        }
-    }
-}
-
-async fn mqtt_queue_to_mqtt_server_task(
+async fn mqtt_writer_task(
     mut mqtt_queue_rx: mpsc::Receiver<String>,
     mqtt_client: Arc<Mutex<AsyncClient>>,
     flag_tx: watch::Sender<bool>,
     flag_rx: watch::Receiver<bool>,
 ) {
+    println!("[TASK] MQTT Writer: START");
+
     while let Some(json_str) = mqtt_queue_rx.recv().await {
         let topic = "command";
 
@@ -374,12 +332,13 @@ async fn mqtt_queue_to_mqtt_server_task(
     }
 }
 
-async fn serial_port_to_serial_queue_task(
+async fn serial_listener_task(
     serial_port: Arc<Mutex<Option<Box<dyn SerialPort>>>>,
     tx: mpsc::Sender<String>,
     serial_flag_tx: watch::Sender<bool>,
     serial_flag_rx: watch::Receiver<bool>,
 ) {
+    println!("[TASK] SERIAL Listener: START");
     let mut buffer = String::new();
 
     loop {
@@ -468,25 +427,30 @@ async fn serial_reconnect_task(
     serial_flag_rx: watch::Receiver<bool>,
     reconnection_delay: Duration,
 ) {
+    println!("[TASK] SERIAL Reconnect: START");
+
     loop {
         // Wait until disconnected
         while *serial_flag_rx.borrow() {
             sleep(Duration::from_millis(100)).await;
         }
 
-        println!("🔄 Serial reconnection task active - attempting to connect...");
+        println!("[SERIAL] 🔄 Reconnection Task: Active - attempting to connect...");
 
         match open_serial_port(serial_option_port, serial_option_baud_rate) {
             Ok(port) => {
-                println!("✓ Serial port connected: {}", serial_option_port);
+                println!("[SERIAL] Connected to port: {}", serial_option_port);
                 *serial_port.lock().await = Some(port);
                 let _ = serial_flag_tx.send(true);
             }
             Err(e) => {
                 println!(
-                    "Failed to open serial port: {}. Retrying in {:?}...",
+                    "[SERIAL] Failed to open serial port: \"{}\". Retrying in {:?}...",
                     e, reconnection_delay
                 );
+                {
+                    *serial_port.lock().await = None;
+                }
                 let _ = serial_flag_tx.send(false);
                 sleep(reconnection_delay).await;
             }
@@ -510,20 +474,21 @@ async fn mqtt_reconnect_task(
     mqtt_flag_rx: watch::Receiver<bool>,
     reconnection_delay: Duration,
 ) {
+    println!("[TASK] MQTT Reconnect: START");
     loop {
         while *mqtt_flag_rx.borrow() {
             sleep(Duration::from_millis(100)).await;
         }
 
-        {
-            println!("🔄 MQTT reconnection task active - attempting to connect...");
-            let mut event_loop_guard = mqtt_eventloop.lock().await;
+        println!("[MQTT] 🔄 Reconnection Task: active - attempting to connect...");
+        let mut event_loop_guard = mqtt_eventloop.lock().await;
 
-            match event_loop_guard.poll().await {
-                Ok(_) => {
-                    let mqtt_client_guard = mqtt_client.lock().await;
+        match event_loop_guard.poll().await {
+            Ok(_) => {
+                if let Ok(mqtt_client_guard) =
+                    timeout(Duration::from_secs(5), mqtt_client.lock()).await
+                {
                     // Subscribe to topics
-
                     let result = mqtt_client_guard
                         .subscribe_many([
                             SubscribeFilter {
@@ -547,36 +512,40 @@ async fn mqtt_reconnect_task(
 
                     match result {
                         Ok(_) => {
-                            println!("✓ MQTT connected");
+                            println!("[MQTT] Connected.");
                             let _ = mqtt_flag_tx.send(true);
                         }
                         Err(e) => {
-                            println!("✗ Failed to subscribe: {}", e);
+                            println!("[MQTT] Failed to subscribe: {}", e);
                             let _ = mqtt_flag_tx.send(false);
                         }
                     }
-                }
-                Err(e) => {
-                    println!(
-                        "✗ Failed to connect to MQTT: {}. Retrying in {:?}...",
-                        e, reconnection_delay
-                    );
+                } else {
+                    println!("[MQTT] Failed to acquire MQTT Mutex Guard.");
                     let _ = mqtt_flag_tx.send(false);
                 }
             }
+            Err(e) => {
+                println!(
+                    "[MQTT] Failed to connect to MQTT: {}. Retrying in {:?}...",
+                    e, reconnection_delay
+                );
+                let _ = mqtt_flag_tx.send(false);
+            }
         }
+
         sleep(reconnection_delay).await;
     }
 }
 
-async fn mqtt_server_to_mqtt_queue_task(
+async fn mqtt_listener_task(
     mqtt_eventloop: Arc<Mutex<EventLoop>>,
     mqtt_queue_channel_tx: &Sender<String>,
     mqtt_flag_tx: watch::Sender<bool>,
     mqtt_flag_rx: watch::Receiver<bool>,
     filter_duration: Duration,
 ) {
-    println!("[TASK] MQTT server -> MQTT queue: START");
+    println!("[TASK] MQTT Listener: START");
 
     let mut last_msg_anm_timestamp: Instant = Instant::now();
 
@@ -584,12 +553,12 @@ async fn mqtt_server_to_mqtt_queue_task(
         while !*mqtt_flag_rx.borrow() {
             sleep(Duration::from_millis(100)).await;
         }
-        println!("📡 MQTT listener task active - polling events...");
+        println!("[MQTT] 📡 MQTT listener task active - polling events...");
 
         // Poll MQTT events
         loop {
             let result: Result<Event, rumqttc::ConnectionError> = {
-                match timeout(Duration::from_secs(3), mqtt_eventloop.lock()).await {
+                match timeout(Duration::from_secs(5), mqtt_eventloop.lock()).await {
                     Ok(mut event_loop_guard) => event_loop_guard.poll().await,
                     Err(_) => {
                         println!("[ERROR] MQTT: Mutex Guard timeout");
@@ -656,20 +625,24 @@ async fn mqtt_server_to_mqtt_queue_task(
                                     }
                                     TopicType::Unknown => todo!(),
                                 };
+
+                                continue;
                             }
                             Err(_) => {
-                                // not JSON
+                                println!("[ERROR] Not a JSON Value.");
+                                continue;
                             }
                         }
                     } else {
                         println!("Binary payload received on {topic}: {payload:?}");
+                        continue;
                     }
                 }
                 Ok(Event::Incoming(i)) => {
-                    println!("MQTT event: {:?}", i);
+                    println!("[MQTT] Event::Incoming: {:?}", i);
                 }
-                Ok(Event::Outgoing(_)) => {
-                    // Outgoing packets
+                Ok(Event::Outgoing(i)) => {
+                    println!("[MQTT] Event::Outgoing: {:?}", i);
                 }
                 Err(e) => {
                     println!("MQTT connection error: {}. Connection lost.", e);
