@@ -8,17 +8,17 @@
 typedef struct WindLabels {
   lv_obj_t *timestamp;
 
-  lv_obj_t *x_kalman;
+  lv_obj_t *x_vout;
   lv_obj_t *autocalibrazione_asse_x;
   lv_obj_t *autocalibrazione_misura_x;
   lv_obj_t *temp_sonica_x;
 
-  lv_obj_t *y_kalman;
+  lv_obj_t *y_vout;
   lv_obj_t *autocalibrazione_asse_y;
   lv_obj_t *autocalibrazione_misura_y;
   lv_obj_t *temp_sonica_y;
 
-  lv_obj_t *z_kalman;
+  lv_obj_t *z_vout;
   lv_obj_t *autocalibrazione_asse_z;
   lv_obj_t *autocalibrazione_misura_z;
   lv_obj_t *temp_sonica_z;
@@ -45,6 +45,30 @@ typedef struct ParticulateMatterLabels {
 
 extern ParticulateMatterLabels particulateMatterLabels;
 
+typedef struct ImuLabels {
+  lv_obj_t *timestamp;
+
+  lv_obj_t *acc_top_x;
+  lv_obj_t *acc_top_y;
+  lv_obj_t *acc_top_z;
+
+  lv_obj_t *acc_x;
+  lv_obj_t *acc_y;
+  lv_obj_t *acc_z;
+
+  lv_obj_t *mag_x;
+  lv_obj_t *mag_y;
+  lv_obj_t *mag_z;
+
+  lv_obj_t *gyr_x;
+  lv_obj_t *gyr_y;
+  lv_obj_t *gyr_z;
+
+} ImuLabels;
+
+extern ImuLabels imuLabels;
+
 void lvgl_update_anemometer_data(const AnemometerData *anm_data);
 void lvgl_update_particulate_matter_data(const ParticulateMatterData *pm_data);
+void lvgl_update_imu_data(const ImuData *imu_data);
 void lvgl_anemometer_ui_init(lv_obj_t *parent);

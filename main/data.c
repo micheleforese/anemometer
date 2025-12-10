@@ -10,11 +10,12 @@ static const char *TAG = "DATA";
 
 AnemometerData anemometerData;
 ParticulateMatterData particulateMatterData;
+ImuData imuData;
 
 void anemometer_data_default(AnemometerData *anm_data) {
-  anm_data->x_kalman = 0;
-  anm_data->y_kalman = 0;
-  anm_data->z_kalman = 0;
+  anm_data->x_vout = 0;
+  anm_data->y_vout = 0;
+  anm_data->z_vout = 0;
 
   anm_data->autocalibrazione_asse_x = false;
   anm_data->autocalibrazione_asse_y = false;
@@ -50,11 +51,36 @@ void particulate_matter_data_default(ParticulateMatterData *pm_data) {
   strcpy(pm_data->particle_count_unit, "");
 }
 
+void imu_data_default(ImuData *imu_data) {
+  imu_data->timestamp = 0;
+
+  imu_data->acc_top_x = 0;
+  imu_data->acc_top_y = 0;
+  imu_data->acc_top_z = 0;
+
+  imu_data->acc_x = 0;
+  imu_data->acc_y = 0;
+  imu_data->acc_z = 0;
+
+  imu_data->mag_x = 0;
+  imu_data->mag_y = 0;
+  imu_data->mag_z = 0;
+
+  imu_data->gyr_x = 0;
+  imu_data->gyr_y = 0;
+  imu_data->gyr_z = 0;
+
+  strcpy(imu_data->acc_top_unit, "");
+  strcpy(imu_data->acc_unit, "");
+  strcpy(imu_data->mag_unit, "");
+  strcpy(imu_data->gyr_unit, "");
+}
+
 bool parse_anemometer_data(cJSON *root, AnemometerData *anm_data) {
   cJSON *cjson_timestamp = cJSON_GetObjectItem(root, "timestamp");
-  cJSON *cjson_x_kalman = cJSON_GetObjectItem(root, "x_kalman");
-  cJSON *cjson_y_kalman = cJSON_GetObjectItem(root, "y_kalman");
-  cJSON *cjson_z_kalman = cJSON_GetObjectItem(root, "z_kalman");
+  cJSON *cjson_x_vout = cJSON_GetObjectItem(root, "x_vout");
+  cJSON *cjson_y_vout = cJSON_GetObjectItem(root, "y_vout");
+  cJSON *cjson_z_vout = cJSON_GetObjectItem(root, "z_vout");
   cJSON *cjson_autocalibrazione_asse_x =
       cJSON_GetObjectItem(root, "autocalibrazione_asse_x");
   cJSON *cjson_autocalibrazione_asse_y =
@@ -77,16 +103,16 @@ bool parse_anemometer_data(cJSON *root, AnemometerData *anm_data) {
     return false;
   }
 
-  if (!cJSON_IsNumber(cjson_x_kalman)) {
-    ESP_LOGI(TAG, "ROOT->x_kalman: NOT FOUND");
+  if (!cJSON_IsNumber(cjson_x_vout)) {
+    ESP_LOGI(TAG, "ROOT->x_vout: NOT FOUND");
     return false;
   }
-  if (!cJSON_IsNumber(cjson_y_kalman)) {
-    ESP_LOGI(TAG, "ROOT->y_kalman: NOT FOUND");
+  if (!cJSON_IsNumber(cjson_y_vout)) {
+    ESP_LOGI(TAG, "ROOT->y_vout: NOT FOUND");
     return false;
   }
-  if (!cJSON_IsNumber(cjson_z_kalman)) {
-    ESP_LOGI(TAG, "ROOT->z_kalman: NOT FOUND");
+  if (!cJSON_IsNumber(cjson_z_vout)) {
+    ESP_LOGI(TAG, "ROOT->z_vout: NOT FOUND");
     return false;
   }
 
@@ -129,10 +155,10 @@ bool parse_anemometer_data(cJSON *root, AnemometerData *anm_data) {
     return false;
   }
 
-  anm_data->timestamp = (uint32_t)cjson_timestamp->valueint;
-  anm_data->x_kalman = (double)cjson_x_kalman->valuedouble;
-  anm_data->y_kalman = (double)cjson_y_kalman->valuedouble;
-  anm_data->z_kalman = (double)cjson_z_kalman->valuedouble;
+  anm_data->timestamp = (double)cjson_timestamp->valuedouble;
+  anm_data->x_vout = (double)cjson_x_vout->valuedouble;
+  anm_data->y_vout = (double)cjson_y_vout->valuedouble;
+  anm_data->z_vout = (double)cjson_z_vout->valuedouble;
 
   anm_data->autocalibrazione_asse_x =
       cJSON_IsTrue(cjson_autocalibrazione_asse_x);
@@ -240,7 +266,7 @@ bool parse_particulate_matter_data(cJSON *root,
     return false;
   }
 
-  particulateMatterData.timestamp = (uint32_t)cjson_timestamp->valueint;
+  particulateMatterData.timestamp = (double)cjson_timestamp->valuedouble;
   particulateMatterData.mass_density_pm_1_0 =
       (double)cjson_md_pm1_0->valuedouble;
   particulateMatterData.mass_density_pm_2_5 =
@@ -275,8 +301,165 @@ bool parse_particulate_matter_data(cJSON *root,
   return true;
 }
 
+bool parse_imu_data(cJSON *root, ImuData *imu_data) {
+
+  cJSON *cjson_timestamp = cJSON_GetObjectItem(root, "timestamp");
+
+  if (!cJSON_IsNumber(cjson_timestamp)) {
+    ESP_LOGI(TAG, "ROOT->timestamp: NOT FOUND");
+    return false;
+  }
+
+  imu_data->timestamp = (double)cjson_timestamp->valuedouble;
+
+  cJSON *cjson_sensor_data_array = cJSON_GetObjectItem(root, "sensor_data");
+
+  if (!cJSON_IsArray(cjson_sensor_data_array)) {
+    ESP_LOGI(TAG, "ROOT->sensor_data: NOT FOUND");
+    return false;
+  }
+
+  int sensor_data_array_size = cJSON_GetArraySize(cjson_sensor_data_array);
+
+  for (size_t index = 0; index < sensor_data_array_size; index++) {
+    cJSON *cjson_sensor_data =
+        cJSON_GetArrayItem(cjson_sensor_data_array, index);
+
+    if (!cJSON_IsObject(cjson_sensor_data)) {
+      ESP_LOGI(TAG, "ROOT->sensor_data[%d]: NOT FOUND", index);
+      return false;
+    }
+    cJSON *dev = cJSON_GetObjectItem(cjson_sensor_data, "dev");
+
+    if (strcmp(dev->valuestring, "acctop") == 0) {
+      cJSON *cjson_acctop_unit = cJSON_GetObjectItem(cjson_sensor_data, "unit");
+      cJSON *cjson_acctop_x = cJSON_GetObjectItem(cjson_sensor_data, "x");
+      cJSON *cjson_acctop_y = cJSON_GetObjectItem(cjson_sensor_data, "y");
+      cJSON *cjson_acctop_z = cJSON_GetObjectItem(cjson_sensor_data, "z");
+
+      if (!cJSON_IsString(cjson_acctop_unit)) {
+        ESP_LOGI(TAG, "ROOT->sensor_data[%d]->acctop: unit NOT FOUND", index);
+        return false;
+      }
+
+      if (!cJSON_IsNumber(cjson_acctop_x)) {
+        ESP_LOGI(TAG, "ROOT->sensor_data[%d]->acctop: x NOT FOUND", index);
+        return false;
+      }
+
+      if (!cJSON_IsNumber(cjson_acctop_y)) {
+        ESP_LOGI(TAG, "ROOT->sensor_data[%d]->acctop: y NOT FOUND", index);
+        return false;
+      }
+
+      if (!cJSON_IsNumber(cjson_acctop_z)) {
+        ESP_LOGI(TAG, "ROOT->sensor_data[%d]->acctop: z NOT FOUND", index);
+        return false;
+      }
+
+      strcpy(imu_data->acc_top_unit, cjson_acctop_unit->valuestring);
+      imu_data->acc_top_x = cjson_acctop_x->valuedouble;
+      imu_data->acc_top_y = cjson_acctop_y->valuedouble;
+      imu_data->acc_top_z = cjson_acctop_z->valuedouble;
+    } else if (strcmp(dev->valuestring, "acc") == 0) {
+      cJSON *cjson_acc_unit = cJSON_GetObjectItem(cjson_sensor_data, "unit");
+      cJSON *cjson_acc_x = cJSON_GetObjectItem(cjson_sensor_data, "x");
+      cJSON *cjson_acc_y = cJSON_GetObjectItem(cjson_sensor_data, "y");
+      cJSON *cjson_acc_z = cJSON_GetObjectItem(cjson_sensor_data, "z");
+
+      if (!cJSON_IsString(cjson_acc_unit)) {
+        ESP_LOGI(TAG, "ROOT->sensor_data[%d]->acc: unit NOT FOUND", index);
+        return false;
+      }
+
+      if (!cJSON_IsNumber(cjson_acc_x)) {
+        ESP_LOGI(TAG, "ROOT->sensor_data[%d]->acc: x NOT FOUND", index);
+        return false;
+      }
+
+      if (!cJSON_IsNumber(cjson_acc_y)) {
+        ESP_LOGI(TAG, "ROOT->sensor_data[%d]->acc: y NOT FOUND", index);
+        return false;
+      }
+
+      if (!cJSON_IsNumber(cjson_acc_z)) {
+        ESP_LOGI(TAG, "ROOT->sensor_data[%d]->acc: z NOT FOUND", index);
+        return false;
+      }
+
+      strcpy(imu_data->acc_unit, cjson_acc_unit->valuestring);
+      imu_data->acc_x = (double)cjson_acc_x->valuedouble;
+      imu_data->acc_y = (double)cjson_acc_y->valuedouble;
+      imu_data->acc_z = (double)cjson_acc_z->valuedouble;
+    } else if (strcmp(dev->valuestring, "mag") == 0) {
+      cJSON *cjson_mag_unit = cJSON_GetObjectItem(cjson_sensor_data, "unit");
+      cJSON *cjson_mag_x = cJSON_GetObjectItem(cjson_sensor_data, "x");
+      cJSON *cjson_mag_y = cJSON_GetObjectItem(cjson_sensor_data, "y");
+      cJSON *cjson_mag_z = cJSON_GetObjectItem(cjson_sensor_data, "z");
+
+      if (!cJSON_IsString(cjson_mag_unit)) {
+        ESP_LOGI(TAG, "ROOT->sensor_data[%d]->mag: unit NOT FOUND", index);
+        return false;
+      }
+
+      if (!cJSON_IsNumber(cjson_mag_x)) {
+        ESP_LOGI(TAG, "ROOT->sensor_data[%d]->mag: x NOT FOUND", index);
+        return false;
+      }
+
+      if (!cJSON_IsNumber(cjson_mag_y)) {
+        ESP_LOGI(TAG, "ROOT->sensor_data[%d]->mag: y NOT FOUND", index);
+        return false;
+      }
+
+      if (!cJSON_IsNumber(cjson_mag_z)) {
+        ESP_LOGI(TAG, "ROOT->sensor_data[%d]->mag: z NOT FOUND", index);
+        return false;
+      }
+
+      strcpy(imu_data->mag_unit, cjson_mag_unit->valuestring);
+      imu_data->mag_x = (double)cjson_mag_x->valuedouble;
+      imu_data->mag_y = (double)cjson_mag_y->valuedouble;
+      imu_data->mag_z = (double)cjson_mag_z->valuedouble;
+    } else if (strcmp(dev->valuestring, "gyr") == 0) {
+      cJSON *cjson_gyr_unit = cJSON_GetObjectItem(cjson_sensor_data, "unit");
+      cJSON *cjson_gyr_x = cJSON_GetObjectItem(cjson_sensor_data, "x");
+      cJSON *cjson_gyr_y = cJSON_GetObjectItem(cjson_sensor_data, "y");
+      cJSON *cjson_gyr_z = cJSON_GetObjectItem(cjson_sensor_data, "z");
+
+      if (!cJSON_IsString(cjson_gyr_unit)) {
+        ESP_LOGI(TAG, "ROOT->sensor_data[%d]->gyr: unit NOT FOUND", index);
+        strcpy(imu_data->gyr_unit, "");
+      } else {
+        strcpy(imu_data->gyr_unit, cjson_gyr_unit->valuestring);
+      }
+
+      if (!cJSON_IsNumber(cjson_gyr_x)) {
+        ESP_LOGI(TAG, "ROOT->sensor_data[%d]->gyr: x NOT FOUND", index);
+      } else {
+        imu_data->gyr_x = (double)cjson_gyr_x->valuedouble;
+      }
+
+      if (!cJSON_IsNumber(cjson_gyr_y)) {
+        ESP_LOGI(TAG, "ROOT->sensor_data[%d]->gyr: y NOT FOUND", index);
+      } else {
+        imu_data->gyr_y = (double)cjson_gyr_y->valuedouble;
+      }
+
+      if (!cJSON_IsNumber(cjson_gyr_z)) {
+        ESP_LOGI(TAG, "ROOT->sensor_data[%d]->gyr: z NOT FOUND", index);
+      } else {
+        imu_data->gyr_z = (double)cjson_gyr_z->valuedouble;
+      }
+    }
+  }
+
+  ESP_LOGI(TAG, "IMU DATA PARSED OK.");
+  return true;
+}
+
 ParseReturnCode parse_data(cJSON *json, AnemometerData *anm_data,
-                           ParticulateMatterData *pm_data) {
+                           ParticulateMatterData *pm_data, ImuData *imu_data) {
   static const char *TAG = "PARSE_DATA";
 
   ESP_LOGI(TAG, "JSON RECEIVED.");
@@ -298,6 +481,11 @@ ParseReturnCode parse_data(cJSON *json, AnemometerData *anm_data,
       return PRC_UPDATE_PARTICULATE_MATTER;
   }
 
+  if (strcmp(topic->valuestring, "imu") == 0) {
+    if (parse_imu_data(json, imu_data))
+      return PRC_UPDATE_IMU;
+  }
+
   if (strcmp(topic->valuestring, "type") == 0) {
     ESP_LOGI(TAG, "COMMAND");
   }
@@ -308,12 +496,15 @@ ParseReturnCode parse_data(cJSON *json, AnemometerData *anm_data,
 
 void on_json_received(cJSON *json) {
 
-  switch (parse_data(json, &anemometerData, &particulateMatterData)) {
+  switch (parse_data(json, &anemometerData, &particulateMatterData, &imuData)) {
   case PRC_UPDATED_ANEMOMETER:
     lvgl_update_anemometer_data(&anemometerData);
     break;
   case PRC_UPDATE_PARTICULATE_MATTER:
     lvgl_update_particulate_matter_data(&particulateMatterData);
+    break;
+  case PRC_UPDATE_IMU:
+    lvgl_update_imu_data(&imuData);
     break;
   case PRC_PARSING_ERROR:
     ESP_LOGW(TAG, "Failed to parse data");

@@ -7,17 +7,17 @@
 typedef struct AnemometerData {
   uint32_t timestamp;
 
-  double x_kalman;
+  double x_vout;
   bool autocalibrazione_asse_x;
   bool autocalibrazione_misura_x;
   double temp_sonica_x;
 
-  double y_kalman;
+  double y_vout;
   bool autocalibrazione_asse_y;
   bool autocalibrazione_misura_y;
   double temp_sonica_y;
 
-  double z_kalman;
+  double z_vout;
   bool autocalibrazione_asse_z;
   bool autocalibrazione_misura_z;
   double temp_sonica_z;
@@ -48,19 +48,49 @@ typedef struct ParticulateMatterData {
 
 extern ParticulateMatterData particulateMatterData;
 
+typedef struct ImuData {
+  double timestamp;
+
+  double acc_top_x;
+  double acc_top_y;
+  double acc_top_z;
+  char acc_top_unit[8];
+
+  double acc_x;
+  double acc_y;
+  double acc_z;
+  char acc_unit[8];
+
+  double mag_x;
+  double mag_y;
+  double mag_z;
+  char mag_unit[8];
+
+  double gyr_x;
+  double gyr_y;
+  double gyr_z;
+  char gyr_unit[8];
+
+} ImuData;
+
+extern ImuData imuData;
+
 typedef enum {
   PRC_PARSING_ERROR,
   PRC_UPDATED_ANEMOMETER,
-  PRC_UPDATE_PARTICULATE_MATTER
+  PRC_UPDATE_PARTICULATE_MATTER,
+  PRC_UPDATE_IMU,
 } ParseReturnCode;
 
 void anemometer_data_default(AnemometerData *anm_data);
 void particulate_matter_data_default(ParticulateMatterData *pm_data);
+void imu_data_default(ImuData *imu_data);
 bool parse_anemometer_data(cJSON *root, AnemometerData *anm_data);
 bool parse_particulate_matter_data(cJSON *root,
                                    ParticulateMatterData *sps_data);
+bool parse_imu_data(cJSON *root, ImuData *imu_data);
 
 ParseReturnCode parse_data(cJSON *json, AnemometerData *anm_data,
-                           ParticulateMatterData *pm_data);
+                           ParticulateMatterData *pm_data, ImuData *imu_data);
 
 void on_json_received(cJSON *json);
