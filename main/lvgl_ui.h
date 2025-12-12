@@ -68,7 +68,10 @@ typedef struct ImuLabels {
 
 extern ImuLabels imuLabels;
 
+#define MAX_MESSAGES 4
+
 void lvgl_update_anemometer_data(const AnemometerData *anm_data);
 void lvgl_update_particulate_matter_data(const ParticulateMatterData *pm_data);
 void lvgl_update_imu_data(const ImuData *imu_data);
 void lvgl_anemometer_ui_init(lv_obj_t *parent);
+void add_text_to_status_list(const char *text);

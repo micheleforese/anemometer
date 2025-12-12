@@ -1,13 +1,16 @@
 #include "lvgl_ui.h"
 #include "data.h"
-#include <time.h>
-// #include "lv_conf.h"
 #include "lvgl.h"
 #include "tusb_cdc.h"
+#include <time.h>
 
 WindLabels windLabels;
 ParticulateMatterLabels particulateMatterLabels;
 ImuLabels imuLabels;
+
+static lv_obj_t *status_container;
+static lv_obj_t *status_labels[MAX_MESSAGES];
+static int status_msg_count = 0;
 
 void lvgl_update_anemometer_data(const AnemometerData *anm_data) {
   if (lvgl_lock(-1)) {
@@ -217,6 +220,30 @@ static void btn_restart_handler(lv_event_t *e) {
     tusb_json_write(json);
     cJSON_Delete(json);
   }
+}
+
+void add_text_to_status_list(const char *text) {
+  /* Create a new label */
+  lv_obj_t *label = lv_label_create(status_container);
+  lv_label_set_text(label, text);
+
+  /* Track messages */
+  if (status_msg_count < MAX_MESSAGES) {
+    status_labels[status_msg_count++] = label;
+  } else {
+    /* Remove oldest (which is visually at the top because of reversed layout)
+     */
+    lv_obj_del(status_labels[0]);
+
+    /* Shift pointers */
+    for (int i = 1; i < MAX_MESSAGES; i++)
+      status_labels[i - 1] = status_labels[i];
+
+    status_labels[MAX_MESSAGES - 1] = label;
+  }
+
+  /* Ensure bottom message stays visible */
+  lv_obj_scroll_to_view(label, LV_ANIM_OFF);
 }
 
 void lvgl_anemometer_ui_init(lv_obj_t *parent) {
@@ -431,6 +458,10 @@ void lvgl_anemometer_ui_init(lv_obj_t *parent) {
   // TAB CMD
   // -------------------------------
 
+  lv_obj_set_layout(tab_cmd, LV_LAYOUT_FLEX);
+  lv_obj_set_style_pad_all(tab_cmd, 2, 0);
+  lv_obj_set_flex_flow(tab_cmd, LV_FLEX_FLOW_COLUMN);
+
   /* 2 columns, 2 rows */
   static lv_coord_t grid_cols[] = {LV_GRID_FR(1), LV_GRID_FR(1),
                                    LV_GRID_TEMPLATE_LAST};
@@ -442,15 +473,6 @@ void lvgl_anemometer_ui_init(lv_obj_t *parent) {
   lv_obj_set_layout(btn_container, LV_LAYOUT_GRID);
   lv_obj_set_grid_dsc_array(btn_container, grid_cols, grid_rows);
   lv_obj_set_style_pad_row(btn_container, 20, 0);
-
-  // lv_obj_t *btn_container = lv_obj_create(tab_cmd);
-  // lv_obj_set_size(btn_container, lv_pct(100), lv_pct(100));
-  // lv_obj_set_flex_flow(btn_container, LV_FLEX_FLOW_COLUMN);
-  // lv_obj_set_style_align(btn_container, LV_ALIGN_CENTER, 0);
-  // lv_obj_set_style_pad_top(btn_container, 10, 0);    // padding from top
-  // lv_obj_set_style_pad_bottom(btn_container, 10, 0); // padding from bottom
-  // lv_obj_set_flex_align(btn_container, LV_FLEX_FLOW_COLUMN,
-  //                       LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
   // BUTTON - START LOG
   lv_obj_t *measure_start_btn = lv_btn_create(btn_container);
@@ -499,6 +521,13 @@ void lvgl_anemometer_ui_init(lv_obj_t *parent) {
   lv_label_set_text(power_off_label, "POWER\nOFF");
   lv_obj_set_style_text_align(power_off_label, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_center(power_off_label);
+
+  status_container = lv_obj_create(tab_cmd);
+  lv_obj_set_size(status_container, LV_PCT(100), LV_SIZE_CONTENT);
+  lv_obj_set_layout(status_container, LV_LAYOUT_FLEX);
+  lv_obj_set_style_pad_all(status_container, 4, 0);
+  lv_obj_set_flex_flow(status_container, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_scroll_dir(status_container, LV_DIR_ALL);
 
   // 3 = tab_cmd (0-indexed)
   lv_tabview_set_act(tabview, 3, LV_ANIM_OFF);

@@ -80,6 +80,7 @@ typedef enum {
   PRC_UPDATED_ANEMOMETER,
   PRC_UPDATE_PARTICULATE_MATTER,
   PRC_UPDATE_IMU,
+  PRC_STATUS,
 } ParseReturnCode;
 
 void anemometer_data_default(AnemometerData *anm_data);

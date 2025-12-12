@@ -458,6 +458,19 @@ bool parse_imu_data(cJSON *root, ImuData *imu_data) {
   return true;
 }
 
+bool parse_status_data(cJSON *root) {
+
+  cJSON *msg = cJSON_GetObjectItem(root, "msg");
+
+  if (!cJSON_IsString(msg)) {
+    ESP_LOGI(TAG, "ROOT->msg: NOT FOUND.");
+    return false;
+  }
+
+  add_text_to_status_list(msg->valuestring);
+  return true;
+}
+
 ParseReturnCode parse_data(cJSON *json, AnemometerData *anm_data,
                            ParticulateMatterData *pm_data, ImuData *imu_data) {
   static const char *TAG = "PARSE_DATA";
@@ -486,6 +499,11 @@ ParseReturnCode parse_data(cJSON *json, AnemometerData *anm_data,
       return PRC_UPDATE_IMU;
   }
 
+  if (strcmp(topic->valuestring, "status") == 0) {
+    if (parse_status_data(json))
+      return PRC_STATUS;
+  }
+
   if (strcmp(topic->valuestring, "type") == 0) {
     ESP_LOGI(TAG, "COMMAND");
   }
@@ -505,6 +523,8 @@ void on_json_received(cJSON *json) {
     break;
   case PRC_UPDATE_IMU:
     lvgl_update_imu_data(&imuData);
+    break;
+  case PRC_STATUS:
     break;
   case PRC_PARSING_ERROR:
     ESP_LOGW(TAG, "Failed to parse data");
