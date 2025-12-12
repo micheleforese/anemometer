@@ -61,6 +61,7 @@ fn match_topic(topic: &str) -> TopicType {
         "sps30" => TopicType::SPS30,
         "imu" => TopicType::Imu,
         "status" => TopicType::Status,
+        "command" => TopicType::Command,
         _ => TopicType::Unknown,
     }
 }
@@ -71,6 +72,7 @@ enum TopicType {
     SPS30,
     Imu,
     Status,
+    Command,
     Unknown,
 }
 
@@ -260,6 +262,22 @@ async fn mqtt_status_topic_callback(text: &str, tx: &Sender<String>, nopingpong:
     if let Ok(pretty_json_string) = serde_json::to_string(&json_status_msg) {
         if let Err(e) = tx.send(pretty_json_string).await {
             eprintln!("Failed to send message: {e}");
+        }
+    } else {
+        eprintln!("Failed to stringify the json: {json_status_msg}");
+    }
+}
+
+async fn mqtt_command_topic_callback(command_msg: &str, tx: &Sender<String>) {
+    let json_status_msg: serde_json::Value = serde_json::json!({
+        "topic": "status",
+        "msg": format!("COMMAND {}",command_msg),
+    });
+    if let Ok(pretty_json_string) = serde_json::to_string(&json_status_msg) {
+        if let Err(e) = tx.send(pretty_json_string.clone()).await {
+            eprintln!("Failed to send message: {e}");
+        } else {
+            println!("MESSAGE SENT: {}", pretty_json_string.clone());
         }
     } else {
         eprintln!("Failed to stringify the json: {json_status_msg}");
@@ -532,6 +550,10 @@ async fn mqtt_task(
                         path: String::from("status"),
                         qos: QoS::AtMostOnce,
                     },
+                    SubscribeFilter {
+                        path: String::from("command"),
+                        qos: QoS::AtMostOnce,
+                    },
                 ])
                 .await;
 
@@ -587,7 +609,9 @@ async fn mqtt_task(
                     println!("   Payload: {text}");
 
                     if topic_type == TopicType::Status {
-                        mqtt_status_topic_callback(text, &mqtt_queue_channel_tx, nopingpong).await
+                        mqtt_status_topic_callback(&text, &mqtt_queue_channel_tx, nopingpong).await
+                    } else if topic_type == TopicType::Command {
+                        mqtt_command_topic_callback(&text, &mqtt_queue_channel_tx).await
                     }
 
                     match serde_json::from_str::<serde_json::Value>(text) {
@@ -611,6 +635,7 @@ async fn mqtt_task(
                                             .await
                                     }
                                     TopicType::Status => {}
+                                    TopicType::Command => {}
                                     TopicType::Unknown => {}
                                 };
                             } else {
