@@ -430,7 +430,7 @@ bool parse_imu_data(cJSON *root, ImuData *imu_data) {
         // sensor_data[] -> dev
         // ----------------------------------------
         cJSON *dev = cJSON_GetObjectItem(cjson_sensor_data, "dev");
-        if (!cJSON_IsObject(dev)) {
+        if (!cJSON_IsString(dev)) {
           ESP_LOGI(TAG, "ROOT->sensor_data[%d]->dev: NOT FOUND", index);
 
         } else {
