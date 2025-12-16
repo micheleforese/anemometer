@@ -223,27 +223,31 @@ static void btn_restart_handler(lv_event_t *e) {
 }
 
 void add_text_to_status_list(const char *text) {
-  /* Create a new label */
-  lv_obj_t *label = lv_label_create(status_container);
-  lv_label_set_text(label, text);
+  if (lvgl_lock(-1)) {
+    /* Create a new label */
+    lv_obj_t *label = lv_label_create(status_container);
+    lv_label_set_text(label, text);
 
-  /* Track messages */
-  if (status_msg_count < MAX_MESSAGES) {
-    status_labels[status_msg_count++] = label;
-  } else {
-    /* Remove oldest (which is visually at the top because of reversed layout)
-     */
-    lv_obj_del(status_labels[0]);
+    /* Track messages */
+    if (status_msg_count < MAX_MESSAGES) {
+      status_labels[status_msg_count++] = label;
+    } else {
+      /* Remove oldest (which is visually at the top because of reversed layout)
+       */
+      lv_obj_del(status_labels[0]);
 
-    /* Shift pointers */
-    for (int i = 1; i < MAX_MESSAGES; i++)
-      status_labels[i - 1] = status_labels[i];
+      /* Shift pointers */
+      for (int i = 1; i < MAX_MESSAGES; i++)
+        status_labels[i - 1] = status_labels[i];
 
-    status_labels[MAX_MESSAGES - 1] = label;
+      status_labels[MAX_MESSAGES - 1] = label;
+    }
+
+    /* Ensure bottom message stays visible */
+    lv_obj_scroll_to_view(label, LV_ANIM_OFF);
+
+    lvgl_unlock();
   }
-
-  /* Ensure bottom message stays visible */
-  lv_obj_scroll_to_view(label, LV_ANIM_OFF);
 }
 
 void lvgl_anemometer_ui_init(lv_obj_t *parent) {
