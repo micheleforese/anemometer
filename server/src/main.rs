@@ -53,11 +53,14 @@ struct Args {
 
     #[arg(long, default_value_t = false)]
     swap_mean: bool,
+
+    #[arg(long, default_value_t = String::from("anemometer"),)]
+    topic_vento: String,
 }
 
-fn match_topic(topic: &str) -> TopicType {
+fn match_topic(topic: &str, topic_vento: &str) -> TopicType {
     match topic {
-        "anemometer" => TopicType::Anemometer,
+        t if t == topic_vento => TopicType::Anemometer,
         "sps30" => TopicType::SPS30,
         "imu" => TopicType::Imu,
         "status" => TopicType::Status,
@@ -98,6 +101,7 @@ async fn main() {
     println!("FLAG nopingpong: {}", args.nopingpong);
     println!("FLAG swap_mean: {}", args.swap_mean);
     println!("Send Data to screen: {}", !args.nodata);
+    println!("Topic Vento: {}", args.topic_vento);
 
     let (mqtt_watch_channel_tx, mqtt_watch_channel_rx) = watch::channel(false);
     let (serial_watch_channel_tx, serial_watch_channel_rx) = watch::channel(false);
@@ -128,6 +132,7 @@ async fn main() {
             args.nodata,
             args.nopingpong,
             args.swap_mean,
+            &args.topic_vento,
         )
         .await;
     });
@@ -523,6 +528,7 @@ async fn mqtt_task(
     nodata: bool,
     nopingpong: bool,
     swap_mean: bool,
+    topic_vento: &str,
 ) {
     println!("[TASK] MQTT Combined (Connect + Listen): START");
 
@@ -538,7 +544,7 @@ async fn mqtt_task(
             let result = mqtt_client_guard
                 .subscribe_many([
                     SubscribeFilter {
-                        path: String::from("anemometer"),
+                        path: String::from(topic_vento),
                         qos: QoS::AtMostOnce,
                     },
                     SubscribeFilter {
@@ -592,7 +598,7 @@ async fn mqtt_task(
                 let topic = publish.topic;
                 let payload = publish.payload;
 
-                let topic_type = match_topic(&topic);
+                let topic_type = match_topic(&topic, &topic_vento);
 
                 if topic_type == TopicType::Unknown {
                     continue;
